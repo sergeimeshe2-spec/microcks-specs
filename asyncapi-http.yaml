@@ -1,0 +1,386 @@
+asyncapi: '2.6.0'
+info:
+  title: Order Webhooks API
+  version: '1.0.0'
+  description: |
+    HTTP Webhooks API для уведомлений о заказах.
+    Внешние сервисы могут подписываться на уведомления о статусах заказов.
+  x microcks:
+    operationId: "kpm-ebg-order-webhooks"
+    version: "1.0.0"
+
+defaultContentType: application/json
+
+servers:
+  production:
+    url: https://api.example.com/webhooks
+    protocol: http
+    description: Продакшн API сервер
+
+  development:
+    url: https://api-dev.example.com/webhooks
+    protocol: http
+    description: Девелопмент API сервер
+
+channels:
+  order/webhooks/{webhookId}:
+    description: |
+      Webhook endpoint для получения уведомлений о заказах.
+      Клиенты регистрируют свой webhook URL и получают уведомления.
+    parameters:
+      webhookId:
+        description: Уникальный идентификатор webhook подписки
+        schema:
+          type: string
+          format: uuid
+    publish:
+      operationId: sendWebhookNotification
+      description: Отправка webhook уведомления
+      message:
+        oneOf:
+          - $ref: '#/components/messages/OrderCreatedWebhook'
+          - $ref: '#/components/messages/OrderPaidWebhook'
+          - $ref: '#/components/messages/OrderShippedWebhook'
+          - $ref: '#/components/messages/OrderDeliveredWebhook'
+          - $ref: '#/components/messages/OrderCancelledWebhook'
+      bindings:
+        http:
+          type: request
+          method: POST
+          headers:
+            Content-Type: application/json
+            X-Webhook-Signature:
+              description: HMAC подпись для верификации
+              type: string
+            X-Event-Id:
+              description: Уникальный ID события
+              type: string
+              format: uuid
+            X-Event-Type:
+              description: Тип события
+              type: string
+              enum: [order.created, order.paid, order.shipped, order.delivered, order.cancelled]
+
+  # Канал для подписки на webhook (для мокирования - клиент подписывается)
+  webhook/registration:
+    description: Регистрация новой webhook подписки
+    servers:
+      - production
+      - development
+    subscribe:
+      operationId: registerWebhook
+      message:
+        $ref: '#/components/messages/WebhookRegistration'
+
+components:
+  messages:
+    OrderCreatedWebhook:
+      name: OrderCreatedWebhook
+      title: Order Created Webhook
+      summary: Уведомление о создании заказа
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/OrderCreatedEvent'
+      traits:
+        - $ref: '#/components/messageTraits/webhookHeaders'
+
+    OrderPaidWebhook:
+      name: OrderPaidWebhook
+      title: Order Paid Webhook
+      summary: Уведомление об оплате заказа
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/OrderPaidEvent'
+      traits:
+        - $ref: '#/components/messageTraits/webhookHeaders'
+
+    OrderShippedWebhook:
+      name: OrderShippedWebhook
+      title: Order Shipped Webhook
+      summary: Уведомление об отправке заказа
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/OrderShippedEvent'
+      traits:
+        - $ref: '#/components/messageTraits/webhookHeaders'
+
+    OrderDeliveredWebhook:
+      name: OrderDeliveredWebhook
+      title: Order Delivered Webhook
+      summary: Уведомление о доставке заказа
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/OrderDeliveredEvent'
+      traits:
+        - $ref: '#/components/messageTraits/webhookHeaders'
+
+    OrderCancelledWebhook:
+      name: OrderCancelledWebhook
+      title: Order Cancelled Webhook
+      summary: Уведомление об отмене заказа
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/OrderCancelledEvent'
+      traits:
+        - $ref: '#/components/messageTraits/webhookHeaders'
+
+    WebhookRegistration:
+      name: WebhookRegistration
+      title: Webhook Registration
+      summary: Регистрация webhook подписки
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WebhookRegistrationRequest'
+
+  schemas:
+    OrderCreatedEvent:
+      type: object
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - order
+      properties:
+        eventType:
+          type: string
+          enum: [order.created]
+        eventId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        order:
+          $ref: '#/components/schemas/Order'
+
+    OrderPaidEvent:
+      type: object
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - orderId
+        - amount
+      properties:
+        eventType:
+          type: string
+          enum: [order.paid]
+        eventId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        orderId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          precision: 2
+        paymentMethod:
+          type: string
+          enum: [CARD, PAYPAL, BANK_TRANSFER]
+
+    OrderShippedEvent:
+      type: object
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - orderId
+        - trackingNumber
+      properties:
+        eventType:
+          type: string
+          enum: [order.shipped]
+        eventId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        orderId:
+          type: string
+          format: uuid
+        trackingNumber:
+          type: string
+        carrier:
+          type: string
+          enum: [DHL, FedEx, UPS, USPS]
+
+    OrderDeliveredEvent:
+      type: object
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - orderId
+      properties:
+        eventType:
+          type: string
+          enum: [order.delivered]
+        eventId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        orderId:
+          type: string
+          format: uuid
+        deliverySignature:
+          type: string
+          description: Подпись получателя
+
+    OrderCancelledEvent:
+      type: object
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - orderId
+        - reason
+      properties:
+        eventType:
+          type: string
+          enum: [order.cancelled]
+        eventId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        orderId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          enum: [CUSTOMER_REQUEST, OUT_OF_STOCK, PAYMENT_FAILED, FRAUD_SUSPECTED]
+        refunded:
+          type: boolean
+          description: Возврат средств выполнен
+
+    Order:
+      type: object
+      required:
+        - orderId
+        - customerId
+        - items
+        - totalAmount
+        - currency
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        totalAmount:
+          type: number
+          precision: 2
+        currency:
+          type: string
+          enum: [USD, EUR, GBP, RUB]
+        shippingAddress:
+          $ref: '#/components/schemas/Address'
+
+    OrderItem:
+      type: object
+      required:
+        - productId
+        - quantity
+        - price
+      properties:
+        productId:
+          type: string
+          format: uuid
+        productName:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        price:
+          type: number
+          precision: 2
+
+    Address:
+      type: object
+      required:
+        - street
+        - city
+        - postalCode
+        - country
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+          format: ISO 3166-1 alpha-2
+
+    WebhookRegistrationRequest:
+      type: object
+      required:
+        - webhookUrl
+        - events
+        - secret
+      properties:
+        webhookUrl:
+          type: string
+          format: uri
+          description: URL для получения webhook уведомлений
+        events:
+          type: array
+          description: Список событий для подписки
+          items:
+            type: string
+            enum: [order.created, order.paid, order.shipped, order.delivered, order.cancelled]
+        secret:
+          type: string
+          description: Секретный ключ для подписи webhook
+          format: password
+        filters:
+          type: object
+          description: Опциональные фильтры для событий
+          properties:
+            minAmount:
+              type: number
+            specificCustomerId:
+              type: string
+              format: uuid
+
+  messageTraits:
+    webhookHeaders:
+      headers:
+        type: object
+        required:
+          - X-Event-Id
+          - X-Event-Type
+          - X-Webhook-Signature
+        properties:
+          X-Event-Id:
+            type: string
+            format: uuid
+            description: Уникальный ID события
+          X-Event-Type:
+            type: string
+            enum: [order.created, order.paid, order.shipped, order.delivered, order.cancelled]
+            description: Тип события
+          X-Webhook-Signature:
+            type: string
+            description: HMAC подпись (sha256=...)
+          X-Timestamp:
+            type: string
+            format: date-time
+            description: Время отправки webhook
+          X-Retry-Count:
+            type: integer
+            description: Номер попытки отправки
+            minimum: 0

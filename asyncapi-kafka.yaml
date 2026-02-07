@@ -1,0 +1,363 @@
+asyncapi: '2.6.0'
+info:
+  title: User Events API
+  version: '1.0.0'
+  description: |
+    Асинхронный API для пользовательских событий в Kafka.
+    Сервис публикует события при создании, обновлении и удалении пользователей.
+  x microcks:
+    operationId: "kpm-ebg-user-events-kafka"
+    version: "1.0.0"
+
+defaultContentType: application/json
+
+servers:
+  production:
+    url: kafka.production.example.com:9092
+    protocol: kafka
+    description: Продакшн Kafka кластер
+
+  development:
+    url: kafka.development.example.com:9092
+    protocol: kafka
+    description: Девелопмент Kafka кластер
+
+channels:
+  user-created:
+    description: Канал для событий создания пользователя
+    servers:
+      - production
+      - development
+    publish:
+      message:
+        $ref: '#/components/messages/UserCreated'
+      bindings:
+        kafka:
+          contentType: application/json
+          key:
+            type: string
+            description: ID пользователя
+
+  user-updated:
+    description: Канал для событий обновления пользователя
+    servers:
+      - production
+      - development
+    publish:
+      message:
+        $ref: '#/components/messages/UserUpdated'
+      bindings:
+        kafka:
+          contentType: application/json
+          key:
+            type: string
+            description: ID пользователя
+
+  user-deleted:
+    description: Канал для событий удаления пользователя
+    servers:
+      - production
+      - development
+    publish:
+      message:
+        $ref: '#/components/messages/UserDeleted'
+      bindings:
+        kafka:
+          contentType: application/json
+          key:
+            type: string
+            description: ID пользователя
+
+  # Подписчики (для мокирования)
+  user-commands:
+    description: Канал для команд пользователя (subscribe)
+    servers:
+      - production
+      - development
+    subscribe:
+      message:
+        oneOf:
+          - $ref: '#/components/messages/CreateUserCommand'
+          - $ref: '#/components/messages/UpdateUserCommand'
+          - $ref: '#/components/messages/DeleteUserCommand'
+      bindings:
+        kafka:
+          groupId: microcks-mock
+          contentType: application/json
+
+components:
+  messages:
+    UserCreated:
+      name: UserCreated
+      title: User Created Event
+      summary: Событие создания нового пользователя
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/UserCreatedEvent'
+      traits:
+        - $ref: '#/components/messageTraits/commonHeaders'
+
+    UserUpdated:
+      name: UserUpdated
+      title: User Updated Event
+      summary: Событие обновления пользователя
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/UserUpdatedEvent'
+      traits:
+        - $ref: '#/components/messageTraits/commonHeaders'
+
+    UserDeleted:
+      name: UserDeleted
+      title: User Deleted Event
+      summary: Событие удаления пользователя
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/UserDeletedEvent'
+      traits:
+        - $ref: '#/components/messageTraits/commonHeaders'
+
+    CreateUserCommand:
+      name: CreateUserCommand
+      title: Create User Command
+      summary: Команда на создание пользователя
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/CreateUserCommand'
+
+    UpdateUserCommand:
+      name: UpdateUserCommand
+      title: Update User Command
+      summary: Команда на обновление пользователя
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/UpdateUserCommand'
+
+    DeleteUserCommand:
+      name: DeleteUserCommand
+      title: Delete User Command
+      summary: Команда на удаление пользователя
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DeleteUserCommand'
+
+  schemas:
+    UserCreatedEvent:
+      type: object
+      description: Событие создания пользователя
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - data
+      properties:
+        eventType:
+          type: string
+          enum: [USER_CREATED]
+          description: Тип события
+        eventId:
+          type: string
+          format: uuid
+          description: Уникальный ID события
+        timestamp:
+          type: string
+          format: date-time
+          description: Время события
+        data:
+          $ref: '#/components/schemas/User'
+
+    UserUpdatedEvent:
+      type: object
+      description: Событие обновления пользователя
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - data
+      properties:
+        eventType:
+          type: string
+          enum: [USER_UPDATED]
+          description: Тип события
+        eventId:
+          type: string
+          format: uuid
+          description: Уникальный ID события
+        timestamp:
+          type: string
+          format: date-time
+          description: Время события
+        data:
+          $ref: '#/components/schemas/User'
+
+    UserDeletedEvent:
+      type: object
+      description: Событие удаления пользователя
+      required:
+        - eventType
+        - eventId
+        - timestamp
+        - userId
+      properties:
+        eventType:
+          type: string
+          enum: [USER_DELETED]
+          description: Тип события
+        eventId:
+          type: string
+          format: uuid
+          description: Уникальный ID события
+        timestamp:
+          type: string
+          format: date-time
+          description: Время события
+        userId:
+          type: string
+          format: uuid
+          description: ID удаленного пользователя
+
+    CreateUserCommand:
+      type: object
+      description: Команда создания пользователя
+      required:
+        - commandId
+        - email
+        - firstName
+        - lastName
+      properties:
+        commandId:
+          type: string
+          format: uuid
+          description: ID команды
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: Имя пользователя
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: Фамилия пользователя
+        role:
+          type: string
+          enum: [USER, ADMIN, MANAGER]
+          default: USER
+          description: Роль пользователя
+
+    UpdateUserCommand:
+      type: object
+      description: Команда обновления пользователя
+      required:
+        - commandId
+        - userId
+      properties:
+        commandId:
+          type: string
+          format: uuid
+          description: ID команды
+        userId:
+          type: string
+          format: uuid
+          description: ID пользователя
+        email:
+          type: string
+          format: email
+          description: Новый email
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: Новое имя
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: Новая фамилия
+        role:
+          type: string
+          enum: [USER, ADMIN, MANAGER]
+          description: Новая роль
+
+    DeleteUserCommand:
+      type: object
+      description: Команда удаления пользователя
+      required:
+        - commandId
+        - userId
+      properties:
+        commandId:
+          type: string
+          format: uuid
+          description: ID команды
+        userId:
+          type: string
+          format: uuid
+          description: ID пользователя для удаления
+
+    User:
+      type: object
+      description: Данные пользователя
+      required:
+        - userId
+        - email
+        - firstName
+        - lastName
+        - role
+        - createdAt
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Уникальный ID пользователя
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: Имя пользователя
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: Фамилия пользователя
+        role:
+          type: string
+          enum: [USER, ADMIN, MANAGER]
+          description: Роль пользователя
+        createdAt:
+          type: string
+          format: date-time
+          description: Время создания
+        updatedAt:
+          type: string
+          format: date-time
+          description: Время последнего обновления
+
+  messageTraits:
+    commonHeaders:
+      headers:
+        type: object
+        properties:
+          correlationId:
+            type: string
+            format: uuid
+            description: ID для корреляции запросов
+          eventId:
+            type: string
+            format: uuid
+            description: ID события
+          timestamp:
+            type: string
+            format: date-time
+            description: Время отправки
+          source:
+            type: string
+            description: Источник события
